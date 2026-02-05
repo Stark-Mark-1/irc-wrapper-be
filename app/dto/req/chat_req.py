@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class ChatReq(BaseModel):
+    chat_id: str | None = None
+    mode: str = Field(default="chat")
+    prompt: str = Field(min_length=1)
+
+    # Image analysis inputs (mode=image_analysis)
+    image_url: str | None = None
+    image_base64: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_mode_and_image_inputs(self) -> "ChatReq":
+        m = (self.mode or "chat").strip().lower()
+        if m == "chat":
+            return self
+        if m == "image_analysis":
+            has_url = bool(self.image_url)
+            has_b64 = bool(self.image_base64)
+            if has_url == has_b64:
+                raise ValueError("For mode=image_analysis, provide exactly one of image_url or image_base64.")
+            return self
+        # allow other modes to be handled by BadStrategy
+        return self
+
