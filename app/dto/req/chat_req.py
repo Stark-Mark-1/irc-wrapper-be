@@ -6,11 +6,12 @@ from pydantic import BaseModel, Field, model_validator
 class ChatReq(BaseModel):
     chat_id: str | None = None
     mode: str = Field(default="chat")
-    prompt: str = Field(min_length=1)
+    prompt: str = Field(min_length=1, max_length=10000)
 
     # Image analysis inputs (mode=image_analysis)
-    image_url: str | None = None
-    image_base64: str | None = None
+    # max_length for base64: ~10MB image = ~13.3MB base64
+    image_url: str | None = Field(default=None, max_length=2000)
+    image_base64: str | None = Field(default=None, max_length=14_000_000)
 
     @model_validator(mode="after")
     def _validate_mode_and_image_inputs(self) -> "ChatReq":

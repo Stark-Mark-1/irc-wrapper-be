@@ -1,14 +1,89 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import socket
 from collections.abc import AsyncIterator
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 
 from app.config import settings
 
 Role = Literal["system", "developer", "user", "assistant"]
+
+
+def _is_private_ip(ip_str: str) -> bool:
+    """Check if an IP address is private/internal."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        )
+    except ValueError:
+        return False
+
+
+# Magic bytes for common image formats
+IMAGE_MAGIC_BYTES = {
+    b"\xff\xd8\xff": "image/jpeg",
+    b"\x89PNG\r\n\x1a\n": "image/png",
+    b"GIF87a": "image/gif",
+    b"GIF89a": "image/gif",
+    b"RIFF": "image/webp",  # WebP starts with RIFF....WEBP
+}
+
+
+def validate_image_content(data: bytes) -> str:
+    """
+    Validate that the given bytes represent a valid image.
+
+    Returns:
+        The detected MIME type if valid
+
+    Raises:
+        ValueError if the content is not a recognized image format
+    """
+    for magic, mime_type in IMAGE_MAGIC_BYTES.items():
+        if data.startswith(magic):
+            return mime_type
+
+    # Special check for WebP (RIFF....WEBP)
+    if data[:4] == b"RIFF" and len(data) > 12 and data[8:12] == b"WEBP":
+        return "image/webp"
+
+    raise ValueError("Invalid image format. Supported formats: JPEG, PNG, GIF, WebP")
+
+
+def validate_image_url(url: str) -> None:
+    """
+    Validate an image URL for SSRF protection.
+    Raises ValueError if the URL is unsafe.
+    """
+    parsed = urlparse(url)
+
+    # Enforce HTTPS only
+    if parsed.scheme.lower() != "https":
+        raise ValueError("Only HTTPS URLs are allowed for image_url.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+
+    # Resolve hostname to check for private IPs
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for _, _, _, _, sockaddr in resolved_ips:
+            ip_str = sockaddr[0]
+            if _is_private_ip(ip_str):
+                raise ValueError("URL resolves to a private/internal IP address.")
+    except socket.gaierror:
+        raise ValueError(f"Could not resolve hostname: {hostname}")
 
 
 class DomainLlmWrapper:
@@ -37,6 +112,12 @@ class DomainLlmWrapper:
 
     def llm_name(self) -> str:
         return "openai"
+
+    def text_model_name(self) -> str:
+        return self._text_model
+
+    def vision_model_name(self) -> str:
+        return self._vision_model
 
     def master_prompt(self) -> str:
         return self._master_prompt
@@ -69,6 +150,7 @@ class DomainLlmWrapper:
 
         image_part: dict[str, Any]
         if image_url:
+            validate_image_url(image_url)
             image_part = {"type": "image_url", "image_url": {"url": image_url}}
         else:
             # Accept raw base64 and convert to a data URL.
@@ -77,12 +159,16 @@ class DomainLlmWrapper:
             if b64.startswith("data:"):
                 data_url = b64
             else:
-                # Validate base64 without fully decoding to bytes in memory-heavy ways
+                # Validate base64 and check image format
                 try:
-                    base64.b64decode(b64, validate=True)
+                    decoded = base64.b64decode(b64, validate=True)
+                    # Validate it's actually an image (check magic bytes)
+                    mime_type = validate_image_content(decoded[:16])
+                except ValueError:
+                    raise
                 except Exception as e:  # noqa: BLE001
                     raise ValueError("image_base64 must be valid base64 or a data URL.") from e
-                data_url = f"data:image/jpeg;base64,{b64}"
+                data_url = f"data:{mime_type};base64,{b64}"
             image_part = {"type": "image_url", "image_url": {"url": data_url}}
 
         msgs: list[dict[str, Any]] = []

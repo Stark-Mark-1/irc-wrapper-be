@@ -89,7 +89,7 @@ class ImageAnalysisStrategy(GeneratorStrategy):
             role=ChatRole.ASSISTANT,
             mode="image_analysis",
             content=full,
-            meta={"provider": llm.llm_name(), "model": "vision", "master_prompt": "applied"},
+            meta={"provider": llm.llm_name(), "model": llm.vision_model_name(), "master_prompt": "applied"},
             previous_message_id=user_msg.chat_history_id,
         )
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.database import get_db
+from app.models.ambio_ai_chat import AmbioAiChat
 from app.models.ambio_ai_chat_history import AmbioAiChatHistory
+from app.utils.audit_logger import log_suspicious_access
 from app.utils.database_utils.chat_utils import list_chats_for_session
 from app.utils.database_utils.session_utils import get_active_session
 
@@ -25,6 +27,7 @@ async def list_history(x_session_id: str | None = Header(default=None), db: Asyn
 
 @router.get("/chat-history/{chat_id}")
 async def get_chat_history(
+    request: Request,
     chat_id: str,
     x_session_id: str | None = Header(default=None),
     page: int = Query(default=1, ge=1),
@@ -37,7 +40,24 @@ async def get_chat_history(
     if not sess:
         raise HTTPException(status_code=401, detail="Invalid or inactive session.")
 
-    # NOTE: Ownership enforcement (chat belongs to session) is recommended but not implemented yet.
+    # Verify chat belongs to this session
+    chat = await db.scalar(
+        select(AmbioAiChat).where(
+            AmbioAiChat.chat_id == chat_id,
+            AmbioAiChat.session_id == x_session_id,
+        )
+    )
+    if not chat:
+        # Check if chat exists at all - if it does, this might be an unauthorized access attempt
+        any_chat = await db.scalar(select(AmbioAiChat).where(AmbioAiChat.chat_id == chat_id))
+        if any_chat:
+            log_suspicious_access(
+                "attempted_access_to_other_session_chat",
+                request,
+                {"attempted_chat_id": chat_id},
+            )
+        raise HTTPException(status_code=404, detail="Chat not found.")
+
     offset = (page - 1) * page_size
     res = await db.execute(
         select(AmbioAiChatHistory)
