@@ -10,8 +10,8 @@ from app.database.base import Base
 from app.models.enums import ReferenceType
 
 
-class AmbioAiUserSession(Base):
-    __tablename__ = "ambio_ai_user_session"
+class RehabAiUserSession(Base):
+    __tablename__ = "rehab_ai_user_session"
 
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     unique_reference_id: Mapped[str] = mapped_column(String(256), index=True)

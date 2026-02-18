@@ -1,36 +1,35 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ambio_ai_chat import AmbioAiChat
+from app.rehab_ai_strategy.generator_strategy import GeneratorStrategy
+from app.models.rehab_ai_chat import RehabAiChat
 from app.models.enums import ReferenceType
 
 
-class GeneratorStrategy(ABC):
-    @abstractmethod
+class BadStrategy(GeneratorStrategy):
+    def __init__(self, invalid_mode: str | None = None) -> None:
+        self.invalid_mode = invalid_mode or "unknown"
+
     def purpose(self) -> list[str]:
-        raise NotImplementedError
+        return []
 
-    @abstractmethod
     async def run_validation(self, db: AsyncSession, session_id: str, reference_type: ReferenceType) -> bool:
-        raise NotImplementedError
+        return True
 
-    @abstractmethod
     def get_response_content_type(self) -> str:
-        raise NotImplementedError
+        return "text/plain"
 
-    @abstractmethod
     async def generate_response(
         self,
         *,
         input_text: str,
-        active_chat: AmbioAiChat,
+        active_chat: RehabAiChat,
         session_id: str,
         db: AsyncSession,
         extra: dict | None = None,
     ) -> AsyncIterator[str]:
-        raise NotImplementedError
+        yield f"Invalid mode: {self.invalid_mode}"
 

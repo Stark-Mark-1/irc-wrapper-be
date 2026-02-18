@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Self
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -14,7 +16,7 @@ class ChatReq(BaseModel):
     image_base64: str | None = Field(default=None, max_length=14_000_000)
 
     @model_validator(mode="after")
-    def _validate_mode_and_image_inputs(self) -> "ChatReq":
+    def _validate_mode_and_image_inputs(self) -> Self:
         m = (self.mode or "chat").strip().lower()
         if m == "chat":
             return self

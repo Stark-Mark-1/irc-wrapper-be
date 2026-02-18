@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.database import get_db
-from app.models.ambio_ai_chat import AmbioAiChat
-from app.models.ambio_ai_chat_history import AmbioAiChatHistory
+from app.models.rehab_ai_chat import RehabAiChat
+from app.models.rehab_ai_chat_history import RehabAiChatHistory
 from app.utils.audit_logger import log_suspicious_access
 from app.utils.database_utils.chat_utils import list_chats_for_session
 from app.utils.database_utils.session_utils import get_active_session
@@ -42,14 +42,14 @@ async def get_chat_history(
 
     # Verify chat belongs to this session
     chat = await db.scalar(
-        select(AmbioAiChat).where(
-            AmbioAiChat.chat_id == chat_id,
-            AmbioAiChat.session_id == x_session_id,
+        select(RehabAiChat).where(
+            RehabAiChat.chat_id == chat_id,
+            RehabAiChat.session_id == x_session_id,
         )
     )
     if not chat:
         # Check if chat exists at all - if it does, this might be an unauthorized access attempt
-        any_chat = await db.scalar(select(AmbioAiChat).where(AmbioAiChat.chat_id == chat_id))
+        any_chat = await db.scalar(select(RehabAiChat).where(RehabAiChat.chat_id == chat_id))
         if any_chat:
             log_suspicious_access(
                 "attempted_access_to_other_session_chat",
@@ -60,9 +60,9 @@ async def get_chat_history(
 
     offset = (page - 1) * page_size
     res = await db.execute(
-        select(AmbioAiChatHistory)
-        .where(AmbioAiChatHistory.chat_id == chat_id)
-        .order_by(AmbioAiChatHistory.created_at.desc())
+        select(RehabAiChatHistory)
+        .where(RehabAiChatHistory.chat_id == chat_id)
+        .order_by(RehabAiChatHistory.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )

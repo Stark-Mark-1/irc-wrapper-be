@@ -24,7 +24,7 @@ class ZaiService(LlmService):
         self,
         *,
         api_key: str | None = None,
-        model: str = "zai-1.0",
+        model: str = "glm-4-plus",
         master_prompt: str | None = None,
     ) -> None:
         self._api_key = api_key or settings.zai_api_key
@@ -67,6 +67,8 @@ class ZaiService(LlmService):
             )
             response.raise_for_status()
             data = response.json()
+            if "error" in data:
+                raise ValueError(f"Zai API Error: {data['error']}")
 
             # Extract the assistant message content
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")

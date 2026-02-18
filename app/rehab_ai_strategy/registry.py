@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Type
 
-from app.ambio_ai_strategy.generator_strategy import GeneratorStrategy
+from app.rehab_ai_strategy.generator_strategy import GeneratorStrategy
 
 STRATEGY_REGISTRY: dict[str, Type[GeneratorStrategy]] = {}
 

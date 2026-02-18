@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ambio_ai_chat import AmbioAiChat
+from app.models.rehab_ai_chat import RehabAiChat
 
 
 async def get_or_create_chat(
@@ -15,13 +15,13 @@ async def get_or_create_chat(
     session_id: str,
     chat_id: str | None,
     prompt: str,
-) -> AmbioAiChat:
+) -> RehabAiChat:
     if chat_id:
-        existing = await db.scalar(select(AmbioAiChat).where(AmbioAiChat.chat_id == chat_id))
+        existing = await db.scalar(select(RehabAiChat).where(RehabAiChat.chat_id == chat_id))
         if existing:
             return existing
 
-    chat = AmbioAiChat(
+    chat = RehabAiChat(
         chat_id=str(uuid.uuid4()),
         session_id=session_id,
         title=(prompt or "")[:50],
@@ -34,11 +34,11 @@ async def get_or_create_chat(
     return chat
 
 
-async def list_chats_for_session(db: AsyncSession, session_id: str) -> list[AmbioAiChat]:
+async def list_chats_for_session(db: AsyncSession, session_id: str) -> list[RehabAiChat]:
     res = await db.execute(
-        select(AmbioAiChat)
-        .where(AmbioAiChat.session_id == session_id, AmbioAiChat.is_archived.is_(False))
-        .order_by(AmbioAiChat.created_at.desc())
+        select(RehabAiChat)
+        .where(RehabAiChat.session_id == session_id, RehabAiChat.is_archived.is_(False))
+        .order_by(RehabAiChat.created_at.desc())
     )
     return list(res.scalars().all())
 

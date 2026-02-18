@@ -29,7 +29,7 @@ def _cors_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-app = FastAPI(title="Ambio AI API", version="1.0.0")
+app = FastAPI(title="Rehab AI API", version="1.0.0")
 
 # Add rate limiter
 app.state.limiter = limiter

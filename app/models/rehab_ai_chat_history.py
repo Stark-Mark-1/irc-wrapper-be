@@ -11,8 +11,8 @@ from app.database.base import Base
 from app.models.enums import ChatRole
 
 
-class AmbioAiChatHistory(Base):
-    __tablename__ = "ambio_ai_chat_history"
+class RehabAiChatHistory(Base):
+    __tablename__ = "rehab_ai_chat_history"
 
     chat_history_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     chat_id: Mapped[str] = mapped_column(String(64), index=True)

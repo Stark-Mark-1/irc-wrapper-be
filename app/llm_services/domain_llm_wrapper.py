@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from openai import AsyncOpenAI
+
 
 from app.config import settings
 
@@ -86,12 +86,13 @@ def validate_image_url(url: str) -> None:
         raise ValueError(f"Could not resolve hostname: {hostname}")
 
 
+from app.llm_services.zai_service import ZaiService
+
+
 class DomainLlmWrapper:
     """
-    A single wrapper that:
-    - injects a master (domain) prompt for every request
-    - normalizes responses to AsyncIterator[str] (streaming)
-    - supports both normal chat and image analysis
+    A wrapper that delegates to ZaiService for "ZAI only" mode.
+    Maintains the interface expected by strategies.
     """
 
     def __init__(
@@ -102,40 +103,27 @@ class DomainLlmWrapper:
         vision_model: str | None = None,
         master_prompt: str | None = None,
     ) -> None:
-        key = api_key or settings.openai_api_key
-        if not key:
-            raise RuntimeError("OPENAI_API_KEY is required to use DomainLlmWrapper.")
-        self._client = AsyncOpenAI(api_key=key)
-        self._text_model = text_model or settings.default_text_model
-        self._vision_model = vision_model or settings.default_vision_model
-        self._master_prompt = master_prompt or settings.master_prompt
+        self._service = ZaiService(
+            api_key=api_key,
+            model=text_model or "glm-4-plus",
+            master_prompt=master_prompt
+        )
 
     def llm_name(self) -> str:
-        return "openai"
+        return self._service.llm_name()
 
     def text_model_name(self) -> str:
-        return self._text_model
+        return self._service.model_name()
 
     def vision_model_name(self) -> str:
-        return self._vision_model
+        return self._service.model_name()
 
     def master_prompt(self) -> str:
-        return self._master_prompt
-
-    def _with_master_prompt(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        # Put master prompt up front so it dominates behavior.
-        return [{"role": "developer", "content": self._master_prompt}, *messages]
+        return self._service.custom_prompt()
 
     async def stream_chat(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
-        stream = await self._client.chat.completions.create(
-            model=self._text_model,
-            messages=self._with_master_prompt(messages),
-            stream=True,
-        )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                yield delta.content
+        async for chunk in self._service.generate_response_stream(messages):
+            yield chunk
 
     async def stream_image_analysis(
         self,
@@ -145,52 +133,7 @@ class DomainLlmWrapper:
         image_base64: str | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[str]:
-        if bool(image_url) == bool(image_base64):
-            raise ValueError("Provide exactly one of image_url or image_base64.")
-
-        image_part: dict[str, Any]
-        if image_url:
-            validate_image_url(image_url)
-            image_part = {"type": "image_url", "image_url": {"url": image_url}}
-        else:
-            # Accept raw base64 and convert to a data URL.
-            # If caller already sends a data URL, preserve it.
-            b64 = image_base64 or ""
-            if b64.startswith("data:"):
-                data_url = b64
-            else:
-                # Validate base64 and check image format
-                try:
-                    decoded = base64.b64decode(b64, validate=True)
-                    # Validate it's actually an image (check magic bytes)
-                    mime_type = validate_image_content(decoded[:16])
-                except ValueError:
-                    raise
-                except Exception as e:  # noqa: BLE001
-                    raise ValueError("image_base64 must be valid base64 or a data URL.") from e
-                data_url = f"data:{mime_type};base64,{b64}"
-            image_part = {"type": "image_url", "image_url": {"url": data_url}}
-
-        msgs: list[dict[str, Any]] = []
-        if prior_messages:
-            msgs.extend(prior_messages)
-        msgs.append(
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    image_part,
-                ],
-            }
-        )
-
-        stream = await self._client.chat.completions.create(
-            model=self._vision_model,
-            messages=self._with_master_prompt(msgs),
-            stream=True,
-        )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                yield delta.content
+        # ZaiService doesn't support image analysis in the current implementation
+        # check if Zai supports vision, if not yield a placeholder or error
+        yield "Image analysis is not supported by the current Zai configuration."
 

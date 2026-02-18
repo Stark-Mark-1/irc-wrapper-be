@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
 
-class AmbioAiPrompts(Base):
-    __tablename__ = "ambio_ai_prompts"
+class RehabAiPrompts(Base):
+    __tablename__ = "rehab_ai_prompts"
 
     prompt_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)

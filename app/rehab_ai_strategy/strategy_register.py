@@ -1,0 +1,10 @@
+from __future__ import annotations
+
+from app.rehab_ai_strategy.bad_strategy import BadStrategy
+from app.rehab_ai_strategy.chat_strategy import ChatStrategy
+from app.rehab_ai_strategy.generator_strategy import GeneratorStrategy
+from app.rehab_ai_strategy.image_analysis_strategy import ImageAnalysisStrategy
+from app.rehab_ai_strategy.image_strategy import ImageStrategy
+from app.rehab_ai_strategy.registry import register_strategies
+
+register_strategies(ChatStrategy, ImageAnalysisStrategy, ImageStrategy)

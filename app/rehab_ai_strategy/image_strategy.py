@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ambio_ai_strategy.generator_strategy import GeneratorStrategy
-from app.models.ambio_ai_chat import AmbioAiChat
+from app.rehab_ai_strategy.generator_strategy import GeneratorStrategy
+from app.models.rehab_ai_chat import RehabAiChat
 from app.models.enums import ChatRole, ReferenceType
 from app.utils.database_utils.chat_history_utils import (
     count_user_messages_for_session_by_mode,
@@ -38,7 +38,7 @@ class ImageStrategy(GeneratorStrategy):
         self,
         *,
         input_text: str,
-        active_chat: AmbioAiChat,
+        active_chat: RehabAiChat,
         session_id: str,
         db: AsyncSession,
         extra: dict | None = None,

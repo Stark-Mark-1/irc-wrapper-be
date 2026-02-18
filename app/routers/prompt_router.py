@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.database import get_db
-from app.models.ambio_ai_prompts import AmbioAiPrompts
+from app.models.rehab_ai_prompts import RehabAiPrompts
 from app.utils.audit_logger import log_admin_action
 
 router = APIRouter()
@@ -47,7 +47,7 @@ async def create_or_update_prompt(
 
     # Check if prompt with this name exists
     existing = await db.scalar(
-        select(AmbioAiPrompts).where(AmbioAiPrompts.name == body.name)
+        select(RehabAiPrompts).where(RehabAiPrompts.name == body.name)
     )
 
     if existing:
@@ -61,7 +61,7 @@ async def create_or_update_prompt(
         return {"prompt_id": existing.prompt_id, "name": existing.name, "action": "updated"}
 
     # Create new prompt
-    prompt = AmbioAiPrompts(name=body.name, content=body.content)
+    prompt = RehabAiPrompts(name=body.name, content=body.content)
     db.add(prompt)
     await db.commit()
     await db.refresh(prompt)
@@ -74,7 +74,7 @@ async def create_or_update_prompt(
 async def list_prompts(db: AsyncSession = Depends(get_db)) -> list[PromptResponse]:
     """Get all non-archived prompts."""
     result = await db.execute(
-        select(AmbioAiPrompts).where(AmbioAiPrompts.is_archived.is_(False))
+        select(RehabAiPrompts).where(RehabAiPrompts.is_archived.is_(False))
     )
     prompts = list(result.scalars().all())
     return [

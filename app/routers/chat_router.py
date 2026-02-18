@@ -1,14 +1,19 @@
-from __future__ import annotations
+
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ambio_ai_strategy.choose_strategy import choose_strategy
-from app.ambio_ai_strategy.strategy_register import register_strategies  # noqa: F401
 from app.config import settings
 from app.database.database import get_db
-from app.dto.req.chat_req import ChatReq
+from app.models.rehab_ai_chat import RehabAiChat
+from app.models.rehab_ai_chat_history import RehabAiChatHistory
+from app.models.rehab_ai_user_session import RehabAiUserSession
+from app.models.enums import ChatRole
+from app.schemas.chat_schema import ChatRequest, ChatResponse
+from app.rehab_ai_strategy.choose_strategy import choose_strategy
+from app.rehab_ai_strategy.strategy_register import register_strategies  # noqa: F401
+
 from app.utils.database_utils.chat_utils import get_or_create_chat
 from app.utils.database_utils.session_utils import get_active_session
 from app.utils.rate_limiter import limiter
@@ -20,7 +25,7 @@ router = APIRouter()
 @limiter.limit(settings.rate_limit_chat)
 async def chat(
     request: Request,
-    body: ChatReq,
+    body: ChatRequest,
     x_session_id: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):

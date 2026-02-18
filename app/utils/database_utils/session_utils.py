@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ambio_ai_user_session import AmbioAiUserSession
+from app.models.rehab_ai_user_session import RehabAiUserSession
 from app.models.enums import ReferenceType
 
 
@@ -22,24 +22,24 @@ async def create_anonymous_session(
     user_agent: str | None,
     accept_language: str | None,
     client_ip: str | None,
-) -> AmbioAiUserSession:
+) -> RehabAiUserSession:
     fingerprint = _generate_fingerprint(user_agent, accept_language, client_ip)
     existing = await db.scalar(
-        select(AmbioAiUserSession).where(
-            AmbioAiUserSession.unique_reference_id == fingerprint,
-            AmbioAiUserSession.reference_type == ReferenceType.NON_SIGNED_IN_USER,
-            AmbioAiUserSession.is_active.is_(True),
+        select(RehabAiUserSession).where(
+            RehabAiUserSession.unique_reference_id == fingerprint,
+            RehabAiUserSession.reference_type == ReferenceType.NON_SIGNED_IN_USER,
+            RehabAiUserSession.is_active.is_(True),
         )
     )
     if existing:
         return existing
 
-    sess = AmbioAiUserSession(
+    sess = RehabAiUserSession(
         session_id=str(uuid.uuid4()),
         unique_reference_id=fingerprint,
         reference_type=ReferenceType.NON_SIGNED_IN_USER,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.utcnow(),
     )
     db.add(sess)
     await db.commit()
@@ -47,23 +47,23 @@ async def create_anonymous_session(
     return sess
 
 
-async def create_signed_in_session(*, db: AsyncSession, user_id: str) -> AmbioAiUserSession:
+async def create_signed_in_session(*, db: AsyncSession, user_id: str) -> RehabAiUserSession:
     existing = await db.scalar(
-        select(AmbioAiUserSession).where(
-            AmbioAiUserSession.unique_reference_id == user_id,
-            AmbioAiUserSession.reference_type == ReferenceType.SIGNED_IN_USER,
-            AmbioAiUserSession.is_active.is_(True),
+        select(RehabAiUserSession).where(
+            RehabAiUserSession.unique_reference_id == user_id,
+            RehabAiUserSession.reference_type == ReferenceType.SIGNED_IN_USER,
+            RehabAiUserSession.is_active.is_(True),
         )
     )
     if existing:
         return existing
 
-    sess = AmbioAiUserSession(
+    sess = RehabAiUserSession(
         session_id=str(uuid.uuid4()),
         unique_reference_id=user_id,
         reference_type=ReferenceType.SIGNED_IN_USER,
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.utcnow(),
     )
     db.add(sess)
     await db.commit()
@@ -71,11 +71,11 @@ async def create_signed_in_session(*, db: AsyncSession, user_id: str) -> AmbioAi
     return sess
 
 
-async def get_active_session(db: AsyncSession, session_id: str) -> AmbioAiUserSession | None:
+async def get_active_session(db: AsyncSession, session_id: str) -> RehabAiUserSession | None:
     return await db.scalar(
-        select(AmbioAiUserSession).where(
-            AmbioAiUserSession.session_id == session_id,
-            AmbioAiUserSession.is_active.is_(True),
+        select(RehabAiUserSession).where(
+            RehabAiUserSession.session_id == session_id,
+            RehabAiUserSession.is_active.is_(True),
         )
     )
 
@@ -88,7 +88,7 @@ async def invalidate_session(db: AsyncSession, session_id: str) -> bool:
         True if session was found and invalidated, False if not found
     """
     session = await db.scalar(
-        select(AmbioAiUserSession).where(AmbioAiUserSession.session_id == session_id)
+        select(RehabAiUserSession).where(RehabAiUserSession.session_id == session_id)
     )
     if not session:
         return False
@@ -106,9 +106,9 @@ async def invalidate_all_sessions_for_user(db: AsyncSession, user_id: str) -> in
         Number of sessions invalidated
     """
     result = await db.execute(
-        select(AmbioAiUserSession).where(
-            AmbioAiUserSession.unique_reference_id == user_id,
-            AmbioAiUserSession.is_active.is_(True),
+        select(RehabAiUserSession).where(
+            RehabAiUserSession.unique_reference_id == user_id,
+            RehabAiUserSession.is_active.is_(True),
         )
     )
     sessions = list(result.scalars().all())

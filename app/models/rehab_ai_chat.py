@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
 
-class AmbioAiChat(Base):
-    __tablename__ = "ambio_ai_chat"
+class RehabAiChat(Base):
+    __tablename__ = "rehab_ai_chat"
 
     chat_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id: Mapped[str] = mapped_column(String(64), index=True)
