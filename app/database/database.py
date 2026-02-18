@@ -8,7 +8,12 @@ from sqlalchemy.pool import NullPool
 from app.config import settings
 
 
-engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
+def _fix_asyncpg_url(url: str) -> str:
+    """Convert sslmode to ssl for asyncpg compatibility."""
+    return url.replace("sslmode=", "ssl=")
+
+
+engine = create_async_engine(_fix_asyncpg_url(settings.database_url), echo=False, poolclass=NullPool)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
