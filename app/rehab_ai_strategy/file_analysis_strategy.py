@@ -22,9 +22,7 @@ class FileAnalysisStrategy(GeneratorStrategy):
         return ["file_analysis"]
 
     async def run_validation(self, db: AsyncSession, session_id: str, reference_type: ReferenceType) -> bool:
-        # File analysis for signed-in users only
-        if reference_type != ReferenceType.SIGNED_IN_USER:
-            return False
+        # File analysis for both signed-in and anonymous users
         used = await count_user_messages_for_session_by_mode(db, session_id, "file_analysis")
         return used < 100  # Allow up to 100 file analyses per session
 
