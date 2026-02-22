@@ -135,15 +135,6 @@ class DomainLlmWrapper:
     ) -> AsyncIterator[str]:
         """
         Analyze an image with the LLM.
-        
-        Args:
-            prompt: The user's question about the image
-            image_url: Optional HTTPS URL to the image
-            image_base64: Optional base64-encoded image
-            prior_messages: Optional prior messages for context
-        
-        Yields:
-            Response tokens from the LLM
         """
         if not image_url and not image_base64:
             yield "Image analysis requires either image_url or image_base64."
@@ -152,41 +143,30 @@ class DomainLlmWrapper:
         if image_url:
             validate_image_url(image_url)
         
-        # Build messages for image analysis
         messages: list[dict[str, Any]] = []
-        
-        # Add prior messages as context if provided
         if prior_messages:
             messages.extend(prior_messages)
         
-        # Create the user message with image content
-        # Zai API supports images in content array format
+        # Zhipu/GLM format: content is a list of objects
         content: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": prompt
-            }
+            {"type": "text", "text": prompt}
         ]
         
         if image_url:
             content.append({
                 "type": "image_url",
-                "image_url": {
-                    "url": image_url
-                }
+                "image_url": {"url": image_url}
             })
         elif image_base64:
+            # Most modern endpoints (including OpenAI and GLM) prefer data URIs for raw base64
+            # We skip validation here as it's done earlier in the DTO or by the LLM
             content.append({
-                "type": "image",
-                "image": image_base64
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
             })
         
-        messages.append({
-            "role": "user",
-            "content": content
-        })
+        messages.append({"role": "user", "content": content})
         
-        # Stream the response
         async for token in self._service.generate_response_stream(messages):
             yield token
 
@@ -199,42 +179,61 @@ class DomainLlmWrapper:
         prior_messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[str]:
         """
-        Analyze a file (PDF, JPEG, PNG) with the LLM.
-        
-        Args:
-            prompt: The user's question or instruction for file analysis
-            file_bytes: The raw file bytes
-            file_type: The file type (pdf, jpeg, jpg, png)
-            prior_messages: Optional prior messages for context
-        
-        Yields:
-            Response tokens from the LLM
+        Analyze a file (PDF, JPEG, PNG, etc.) with the LLM.
         """
         if not file_bytes or not file_type:
             yield "File analysis requires both file_bytes and file_type."
             return
         
-        # Normalize file type
         file_type = file_type.lower().replace("jpg", "jpeg")
         
-        # Convert file bytes to base64 for transmission to LLM
+        # Check if the file is an image. If so, use image analysis path.
+        is_image = file_type in ["jpeg", "png", "webp", "gif"]
+        
+        if is_image:
+            import base64
+            file_base64 = base64.b64encode(file_bytes).decode("utf-8")
+            async for token in self.stream_image_analysis(
+                prompt=prompt,
+                image_base64=file_base64,
+                prior_messages=prior_messages
+            ):
+                yield token
+            return
+
+        # For non-image files (like PDF), use a structured text prompt for now
+        # OR if the model supports document input (GLM-4-plus does), we could use document format
+        # However, for maximum compatibility, we'll use a better-formatted text wrapper
         import base64
         file_base64 = base64.b64encode(file_bytes).decode("utf-8")
         
-        # Build messages for file analysis
         messages: list[dict[str, Any]] = []
-        
-        # Add prior messages as context if provided
         if prior_messages:
             messages.extend(prior_messages)
         
-        # Create a simple text message with file reference (Zai API compatible)
+        # For PDF, GLM-4-plus often prefers specific document tags or simply text context
+        # We'll stick to a slightly improved version of the previous implementation
+        # but warn that PDF is best handled by specific document models if possible.
         messages.append({
             "role": "user",
-            "content": f"Please analyze the following {file_type.upper()} file (base64 encoded):\n\n[{file_type.upper()}_FILE_START]\n{file_base64}\n[{file_type.upper()}_FILE_END]\n\nUser request: {prompt}"
+            "content": (
+                f"I have attached a {file_type.upper()} file for your analysis. "
+                "Please process the content and answer my request.\n\n"
+                f"[{file_type.upper()}_FILE_CONTENT_BASE64_START]\n"
+                f"{file_base64[:500]}... (truncated for brevity in logs) ...{file_base64[-500:] if len(file_base64) > 1000 else ''}\n"
+                f"[{file_type.upper()}_FILE_CONTENT_BASE64_END]\n\n"
+                f"User Request: {prompt}"
+            )
         })
         
-        # Stream the response
+        # Note: We don't actually truncate the base64 above in the REAL message sent to LLM
+        # I just wrote it that way in the comment/plan. Let's fix it to send FULL content.
+        messages[-1]["content"] = (
+            f"Please analyze the following {file_type.upper()} file (base64 encoded):\n\n"
+            f"[{file_type.upper()}_FILE_START]\n{file_base64}\n[{file_type.upper()}_FILE_END]\n\n"
+            f"User request: {prompt}"
+        )
+
         async for token in self._service.generate_response_stream(messages):
             yield token
 
