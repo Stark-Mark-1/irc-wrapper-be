@@ -26,7 +26,7 @@ class FileAnalysisStrategy(GeneratorStrategy):
         if reference_type != ReferenceType.SIGNED_IN_USER:
             return False
         used = await count_user_messages_for_session_by_mode(db, session_id, "file_analysis")
-        return used < 10  # Allow up to 10 file analyses per session
+        return used < 100  # Allow up to 100 file analyses per session
 
     def get_response_content_type(self) -> str:
         return "text/plain"

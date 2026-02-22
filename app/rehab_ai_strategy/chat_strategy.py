@@ -27,8 +27,8 @@ class ChatStrategy(GeneratorStrategy):
     async def run_validation(self, db: AsyncSession, session_id: str, reference_type: ReferenceType) -> bool:
         used = await count_user_messages_for_session_by_mode(db, session_id, "chat")
         if reference_type == ReferenceType.SIGNED_IN_USER:
-            return used <= 30
-        return used <= 10
+            return used <= 100
+        return used <= 100
 
     def get_response_content_type(self) -> str:
         return "text/plain"

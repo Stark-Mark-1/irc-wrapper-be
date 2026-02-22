@@ -26,7 +26,7 @@ class ImageAnalysisStrategy(GeneratorStrategy):
         if reference_type != ReferenceType.SIGNED_IN_USER:
             return False
         used = await count_user_messages_for_session_by_mode(db, session_id, "image_analysis")
-        return used < 3
+        return used < 100
 
     def get_response_content_type(self) -> str:
         return "text/plain"
