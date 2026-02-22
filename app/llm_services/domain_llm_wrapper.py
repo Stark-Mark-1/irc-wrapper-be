@@ -133,7 +133,135 @@ class DomainLlmWrapper:
         image_base64: str | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[str]:
-        # ZaiService doesn't support image analysis in the current implementation
-        # check if Zai supports vision, if not yield a placeholder or error
-        yield "Image analysis is not supported by the current Zai configuration."
+        """
+        Analyze an image with the LLM.
+        
+        Args:
+            prompt: The user's question about the image
+            image_url: Optional HTTPS URL to the image
+            image_base64: Optional base64-encoded image
+            prior_messages: Optional prior messages for context
+        
+        Yields:
+            Response tokens from the LLM
+        """
+        if not image_url and not image_base64:
+            yield "Image analysis requires either image_url or image_base64."
+            return
+        
+        if image_url:
+            validate_image_url(image_url)
+        
+        # Build messages for image analysis
+        messages: list[dict[str, Any]] = []
+        
+        # Add prior messages as context if provided
+        if prior_messages:
+            messages.extend(prior_messages)
+        
+        # Create the user message with image content
+        # Zai API supports images in content array format
+        content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": prompt
+            }
+        ]
+        
+        if image_url:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": image_url
+                }
+            })
+        elif image_base64:
+            content.append({
+                "type": "image",
+                "image": image_base64
+            })
+        
+        messages.append({
+            "role": "user",
+            "content": content
+        })
+        
+        # Stream the response
+        async for token in self._service.generate_response_stream(messages):
+            yield token
+
+    async def stream_file_analysis(
+        self,
+        *,
+        prompt: str,
+        file_bytes: bytes | None = None,
+        file_type: str | None = None,
+        prior_messages: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
+        """
+        Analyze a file (PDF, JPEG, PNG) with the LLM.
+        
+        Args:
+            prompt: The user's question or instruction for file analysis
+            file_bytes: The raw file bytes
+            file_type: The file type (pdf, jpeg, jpg, png)
+            prior_messages: Optional prior messages for context
+        
+        Yields:
+            Response tokens from the LLM
+        """
+        if not file_bytes or not file_type:
+            yield "File analysis requires both file_bytes and file_type."
+            return
+        
+        # Normalize file type
+        file_type = file_type.lower().replace("jpg", "jpeg")
+        
+        # Convert file bytes to base64 for transmission to LLM
+        import base64
+        file_base64 = base64.b64encode(file_bytes).decode("utf-8")
+        
+        # Build messages for file analysis
+        messages: list[dict[str, Any]] = []
+        
+        # Add prior messages as context if provided
+        if prior_messages:
+            messages.extend(prior_messages)
+        
+        # Create the user message with file content
+        # For PDFs and images, send as base64-encoded content
+        content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": prompt
+            }
+        ]
+        
+        if file_type == "pdf":
+            content.append({
+                "type": "file",
+                "file": {
+                    "mime_type": "application/pdf",
+                    "data": file_base64
+                }
+            })
+        elif file_type in ["jpeg", "png"]:
+            mime_type = f"image/{file_type}"
+            content.append({
+                "type": "image",
+                "image": file_base64,
+                "mime_type": mime_type
+            })
+        else:
+            yield f"Unsupported file type: {file_type}"
+            return
+        
+        messages.append({
+            "role": "user",
+            "content": content
+        })
+        
+        # Stream the response
+        async for token in self._service.generate_response_stream(messages):
+            yield token
 

@@ -50,6 +50,7 @@ class ZaiService(LlmService):
         """
         Generate a response from Z.ai API.
 
+        Supports both text and image content in messages.
         Note: Z.ai is non-streaming, so we yield the full response at once.
         """
         async with httpx.AsyncClient(timeout=60.0) as client:
