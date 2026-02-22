@@ -228,37 +228,10 @@ class DomainLlmWrapper:
         if prior_messages:
             messages.extend(prior_messages)
         
-        # Create the user message with file content
-        # For PDFs and images, send as base64-encoded content
-        content: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": prompt
-            }
-        ]
-        
-        if file_type == "pdf":
-            content.append({
-                "type": "file",
-                "file": {
-                    "mime_type": "application/pdf",
-                    "data": file_base64
-                }
-            })
-        elif file_type in ["jpeg", "png"]:
-            mime_type = f"image/{file_type}"
-            content.append({
-                "type": "image",
-                "image": file_base64,
-                "mime_type": mime_type
-            })
-        else:
-            yield f"Unsupported file type: {file_type}"
-            return
-        
+        # Create a simple text message with file reference (Zai API compatible)
         messages.append({
             "role": "user",
-            "content": content
+            "content": f"Please analyze the following {file_type.upper()} file (base64 encoded):\n\n[{file_type.upper()}_FILE_START]\n{file_base64}\n[{file_type.upper()}_FILE_END]\n\nUser request: {prompt}"
         })
         
         # Stream the response
