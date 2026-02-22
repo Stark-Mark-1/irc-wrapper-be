@@ -42,17 +42,31 @@ class ZaiService(LlmService):
     def custom_prompt(self) -> str:
         return self._master_prompt
 
-    def _with_master_prompt(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Prepend the master prompt as a system message."""
+    def _with_master_prompt(self, messages: list[dict[str, Any]], model: str) -> list[dict[str, Any]]:
+        """Prepend the master prompt as a system message if supported."""
+        # Vision models often don't support system roles or we might want to skip it for certain models
+        if "v" in model.lower() or "ocr" in model.lower():
+            # For multimodal models, some prefer no system prompt or it might cause 400s
+            # Given the user's example doesn't have it, we'll skip it for vision models
+            return messages
+        
         return [{"role": "system", "content": self._master_prompt}, *messages]
 
     async def generate_response_stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
         """
         Generate a response from Z.ai API.
-
-        Supports both text and image content in messages.
-        Note: Z.ai is non-streaming, so we yield the full response at once.
+        Supports text and multimodal content (images).
         """
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": self._with_master_prompt(messages, self._model),
+            "stream": False,
+        }
+        
+        # Add thinking for glm-4.6v as requested in user's example
+        if self._model == "glm-4.6v":
+            payload["thinking"] = {"type": "enabled"}
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 self.ZAI_API_URL,
@@ -60,18 +74,28 @@ class ZaiService(LlmService):
                     "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": self._model,
-                    "messages": self._with_master_prompt(messages),
-                    "stream": False,
-                },
+                json=payload,
             )
-            response.raise_for_status()
+            if response.status_code != 200:
+                error_detail = response.text
+                try:
+                    data = response.json()
+                    if "error" in data:
+                        error_detail = data["error"]
+                except Exception:
+                    pass
+                raise ValueError(f"Zai API Error (Status {response.status_code}): {error_detail}")
+
             data = response.json()
-            if "error" in data:
-                raise ValueError(f"Zai API Error: {data['error']}")
 
             # Extract the assistant message content
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            choices = data.get("choices", [])
+            if not choices:
+                yield "Error: No response choices returned from Zai API."
+                return
+                
+            content = choices[0].get("message", {}).get("content", "")
             if content:
                 yield content
+            else:
+                yield "Error: Response content is empty."

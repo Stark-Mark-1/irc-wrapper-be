@@ -29,35 +29,33 @@ def _is_private_ip(ip_str: str) -> bool:
         return False
 
 
-# Magic bytes for common image formats
+# Magic bytes for common formats
 IMAGE_MAGIC_BYTES = {
-    b"\xff\xd8\xff": "image/jpeg",
+    b"\xff\xd8\xff": "image/jpg",  # Z.ai OCR specifically asks for JPG, not JPEG
     b"\x89PNG\r\n\x1a\n": "image/png",
     b"GIF87a": "image/gif",
     b"GIF89a": "image/gif",
-    b"RIFF": "image/webp",  # WebP starts with RIFF....WEBP
+    b"RIFF": "image/webp",
 }
 
 
 def validate_image_content(data: bytes) -> str:
     """
-    Validate that the given bytes represent a valid image.
-
-    Returns:
-        The detected MIME type if valid
-
-    Raises:
-        ValueError if the content is not a recognized image format
+    Validate that the given bytes represent a valid image or PDF.
     """
     for magic, mime_type in IMAGE_MAGIC_BYTES.items():
         if data.startswith(magic):
             return mime_type
 
-    # Special check for WebP (RIFF....WEBP)
+    # WebP check
     if data[:4] == b"RIFF" and len(data) > 12 and data[8:12] == b"WEBP":
         return "image/webp"
+    
+    # PDF check
+    if data.startswith(b"%PDF"):
+        return "application/pdf"
 
-    raise ValueError("Invalid image format. Supported formats: JPEG, PNG, GIF, WebP")
+    raise ValueError("Invalid format. Supported: JPG, PNG, GIF, WebP, PDF")
 
 
 def validate_image_url(url: str) -> None:
@@ -87,12 +85,13 @@ def validate_image_url(url: str) -> None:
 
 
 from app.llm_services.zai_service import ZaiService
+from app.utils.imagekit_service import imagekit_service
 
 
 class DomainLlmWrapper:
     """
-    A wrapper that delegates to ZaiService for "ZAI only" mode.
-    Maintains the interface expected by strategies.
+    A wrapper that delegates to ZaiService (GLM-4) for all modes.
+    Now uses ImageKit for hosting visual content for GLM-4.6v.
     """
 
     def __init__(
@@ -103,26 +102,31 @@ class DomainLlmWrapper:
         vision_model: str | None = None,
         master_prompt: str | None = None,
     ) -> None:
-        self._service = ZaiService(
+        self._text_service = ZaiService(
             api_key=api_key,
-            model=text_model or "glm-4-plus",
+            model=text_model or settings.default_text_model,
+            master_prompt=master_prompt
+        )
+        self._vision_service = ZaiService(
+            api_key=api_key,
+            model=vision_model or settings.default_vision_model,
             master_prompt=master_prompt
         )
 
     def llm_name(self) -> str:
-        return self._service.llm_name()
+        return self._text_service.llm_name()
 
     def text_model_name(self) -> str:
-        return self._service.model_name()
+        return self._text_service.model_name()
 
     def vision_model_name(self) -> str:
-        return self._service.model_name()
+        return self._vision_service.model_name()
 
     def master_prompt(self) -> str:
-        return self._service.custom_prompt()
+        return self._text_service.custom_prompt()
 
     async def stream_chat(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
-        async for chunk in self._service.generate_response_stream(messages):
+        async for chunk in self._text_service.generate_response_stream(messages):
             yield chunk
 
     async def stream_image_analysis(
@@ -132,42 +136,52 @@ class DomainLlmWrapper:
         image_url: str | None = None,
         image_base64: str | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        mime_type: str = "image/jpg",
     ) -> AsyncIterator[str]:
         """
-        Analyze an image with the LLM.
+        Analyze an image using GLM's multimodal chat capabilities.
+        Uses ImageKit to host the image if only base64 is provided.
         """
         if not image_url and not image_base64:
             yield "Image analysis requires either image_url or image_base64."
             return
         
-        if image_url:
-            validate_image_url(image_url)
-        
+        final_image_url = image_url
+        if not final_image_url and image_base64:
+            # Upload base64 to ImageKit
+            try:
+                # Convert base64 string to bytes
+                import base64
+                image_bytes = base64.b64decode(image_base64)
+                final_image_url = imagekit_service.upload_file(image_bytes, "analysis_image.jpg")
+            except Exception as e:
+                yield f"Failed to upload image to ImageKit: {str(e)}"
+                return
+
         messages: list[dict[str, Any]] = []
         if prior_messages:
             messages.extend(prior_messages)
-        
-        # Zhipu/GLM format: content is a list of objects
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": prompt}
-        ]
-        
-        if image_url:
+            
+        content: list[dict[str, Any]] = []
+        if final_image_url:
+            # Simple heuristic for ImageKit URLs or others
+            is_pdf = final_image_url.lower().split("?")[0].endswith(".pdf")
+            content_type = "file_url" if is_pdf else "image_url"
+            
+            # Use multimodal format matching user's example
             content.append({
-                "type": "image_url",
-                "image_url": {"url": image_url}
+                "type": content_type,
+                content_type: {"url": final_image_url}
             })
-        elif image_base64:
-            # Most modern endpoints (including OpenAI and GLM) prefer data URIs for raw base64
-            # We skip validation here as it's done earlier in the DTO or by the LLM
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-            })
+        
+        content.append({
+            "type": "text",
+            "text": prompt
+        })
         
         messages.append({"role": "user", "content": content})
         
-        async for token in self._service.generate_response_stream(messages):
+        async for token in self._vision_service.generate_response_stream(messages):
             yield token
 
     async def stream_file_analysis(
@@ -179,61 +193,27 @@ class DomainLlmWrapper:
         prior_messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[str]:
         """
-        Analyze a file (PDF, JPEG, PNG, etc.) with the LLM.
+        Analyze a file (PDF, JPEG, PNG, etc.) using GLM multimodal chat.
+        Files are uploaded to ImageKit first.
         """
         if not file_bytes or not file_type:
             yield "File analysis requires both file_bytes and file_type."
             return
         
-        file_type = file_type.lower().replace("jpg", "jpeg")
+        file_type = file_type.lower().replace("jpeg", "jpg")
         
-        # Check if the file is an image. If so, use image analysis path.
-        is_image = file_type in ["jpeg", "png", "webp", "gif"]
-        
-        if is_image:
-            import base64
-            file_base64 = base64.b64encode(file_bytes).decode("utf-8")
-            async for token in self.stream_image_analysis(
-                prompt=prompt,
-                image_base64=file_base64,
-                prior_messages=prior_messages
-            ):
-                yield token
+        # Upload to ImageKit
+        try:
+            file_name = f"analysis_file.{file_type}"
+            hosted_url = imagekit_service.upload_file(file_bytes, file_name)
+        except Exception as e:
+            yield f"Failed to upload file to ImageKit: {str(e)}"
             return
-
-        # For non-image files (like PDF), use a structured text prompt for now
-        # OR if the model supports document input (GLM-4-plus does), we could use document format
-        # However, for maximum compatibility, we'll use a better-formatted text wrapper
-        import base64
-        file_base64 = base64.b64encode(file_bytes).decode("utf-8")
-        
-        messages: list[dict[str, Any]] = []
-        if prior_messages:
-            messages.extend(prior_messages)
-        
-        # For PDF, GLM-4-plus often prefers specific document tags or simply text context
-        # We'll stick to a slightly improved version of the previous implementation
-        # but warn that PDF is best handled by specific document models if possible.
-        messages.append({
-            "role": "user",
-            "content": (
-                f"I have attached a {file_type.upper()} file for your analysis. "
-                "Please process the content and answer my request.\n\n"
-                f"[{file_type.upper()}_FILE_CONTENT_BASE64_START]\n"
-                f"{file_base64[:500]}... (truncated for brevity in logs) ...{file_base64[-500:] if len(file_base64) > 1000 else ''}\n"
-                f"[{file_type.upper()}_FILE_CONTENT_BASE64_END]\n\n"
-                f"User Request: {prompt}"
-            )
-        })
-        
-        # Note: We don't actually truncate the base64 above in the REAL message sent to LLM
-        # I just wrote it that way in the comment/plan. Let's fix it to send FULL content.
-        messages[-1]["content"] = (
-            f"Please analyze the following {file_type.upper()} file (base64 encoded):\n\n"
-            f"[{file_type.upper()}_FILE_START]\n{file_base64}\n[{file_type.upper()}_FILE_END]\n\n"
-            f"User request: {prompt}"
-        )
-
-        async for token in self._service.generate_response_stream(messages):
+            
+        # Delegate to stream_image_analysis using the hosted URL
+        async for token in self.stream_image_analysis(
+            prompt=prompt,
+            image_url=hosted_url,
+            prior_messages=prior_messages,
+        ):
             yield token
-

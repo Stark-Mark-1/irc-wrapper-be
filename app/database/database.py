@@ -21,7 +21,6 @@ def _make_engine():
     if "asyncpg" in url:
         parsed = urlparse(url)
         needs_ssl = "sslmode=require" in (parsed.query or "")
-        # Strip all query params — asyncpg handles config via connect_args
         clean_url = urlunparse(parsed._replace(query=""))
         url = clean_url
         if needs_ssl:
@@ -29,8 +28,27 @@ def _make_engine():
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = _ssl.CERT_NONE
             connect_args["ssl"] = ssl_ctx
+        
+        # Add timeout to asyncpg
+        connect_args["command_timeout"] = 60
+        connect_args["timeout"] = 60
 
-    return create_async_engine(url, echo=False, poolclass=NullPool, connect_args=connect_args)
+    # Common engine arguments
+    engine_args = {
+        "echo": False,
+        "connect_args": connect_args
+    }
+
+    # Only add pooling arguments for non-SQLite databases (like PostgreSQL)
+    if "sqlite" not in url:
+        engine_args.update({
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_recycle": 300,
+            "pool_pre_ping": True,
+        })
+
+    return create_async_engine(url, **engine_args)
 
 
 engine = _make_engine()
