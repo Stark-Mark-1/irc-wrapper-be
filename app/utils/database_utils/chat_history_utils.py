@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ambio_ai_chat_history import AmbioAiChatHistory
+from app.models.rehab_ai_chat_history import RehabAiChatHistory
 from app.models.enums import ChatRole
 
 
@@ -20,8 +20,8 @@ async def create_chat_message(
     content: str,
     meta: dict[str, Any] | None = None,
     previous_message_id: str | None = None,
-) -> AmbioAiChatHistory:
-    msg = AmbioAiChatHistory(
+) -> RehabAiChatHistory:
+    msg = RehabAiChatHistory(
         chat_history_id=str(uuid.uuid4()),
         chat_id=chat_id,
         previous_message_id=previous_message_id,
@@ -37,25 +37,25 @@ async def create_chat_message(
     return msg
 
 
-async def get_chat_history_by_chat_id(db: AsyncSession, chat_id: str) -> list[AmbioAiChatHistory]:
+async def get_chat_history_by_chat_id(db: AsyncSession, chat_id: str) -> list[RehabAiChatHistory]:
     res = await db.execute(
-        select(AmbioAiChatHistory).where(AmbioAiChatHistory.chat_id == chat_id).order_by(AmbioAiChatHistory.created_at.asc())
+        select(RehabAiChatHistory).where(RehabAiChatHistory.chat_id == chat_id).order_by(RehabAiChatHistory.created_at.asc())
     )
     return list(res.scalars().all())
 
 
 async def count_user_messages_for_session_by_mode(db: AsyncSession, session_id: str, mode: str) -> int:
     # Count across all chats belonging to session_id
-    from app.models.ambio_ai_chat import AmbioAiChat
+    from app.models.rehab_ai_chat import RehabAiChat
 
     stmt = (
-        select(func.count(AmbioAiChatHistory.chat_history_id))
-        .select_from(AmbioAiChatHistory)
-        .join(AmbioAiChat, AmbioAiChat.chat_id == AmbioAiChatHistory.chat_id)
+        select(func.count(RehabAiChatHistory.chat_history_id))
+        .select_from(RehabAiChatHistory)
+        .join(RehabAiChat, RehabAiChat.chat_id == RehabAiChatHistory.chat_id)
         .where(
-            AmbioAiChat.session_id == session_id,
-            AmbioAiChatHistory.role == ChatRole.USER,
-            AmbioAiChatHistory.mode == mode,
+            RehabAiChat.session_id == session_id,
+            RehabAiChatHistory.role == ChatRole.USER,
+            RehabAiChatHistory.mode == mode,
         )
     )
     val = await db.scalar(stmt)

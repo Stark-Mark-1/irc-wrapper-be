@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Core
-    database_url: str = "sqlite+aiosqlite:///./app.db"
+    database_url: str = "" # Will be overridden by .env
     allowed_cors_origins: str = "*"
 
     # Auth - these have dev defaults but will warn if used
@@ -37,16 +37,23 @@ class Settings(BaseSettings):
 
     # LLM
     openai_api_key: str | None = None
-    zai_api_key: str | None = None
+
+    # Z.ai / Zhipu AI Settings
+    zai_api_key: str = ""
+    default_text_model: str = "glm-4-plus"
+    default_vision_model: str = "glm-4.6v"
+
+    # ImageKit Settings
+    imagekit_private_key: str = ""
+    imagekit_public_key: str = ""
+    imagekit_url_endpoint: str = ""
+
+    # Master Prompt
     master_prompt: str = (
         "You are a domain-restricted assistant. "
         "Only answer questions within the allowed domain. "
         "If the user asks outside the domain, say you can't help with that."
     )
-
-    # Defaults
-    default_text_model: str = "gpt-4o-mini"
-    default_vision_model: str = "gpt-4o-mini"
 
     # Rate limiting
     rate_limit_session: str = "10/minute"  # Session creation
@@ -55,4 +62,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

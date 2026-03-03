@@ -13,6 +13,7 @@ from sqlalchemy.pool import NullPool
 # Set test environment variables before importing app
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["OPENAI_API_KEY"] = "test-key"
+os.environ["ZAI_API_KEY"] = "test-zai-key"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["ADMIN_API_TOKEN"] = "test-admin-token"
 
